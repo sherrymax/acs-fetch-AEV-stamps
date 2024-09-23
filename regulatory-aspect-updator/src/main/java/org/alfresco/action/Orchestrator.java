@@ -1,6 +1,8 @@
 package org.alfresco.action;
 
 import java.util.*;
+
+import org.alfresco.behaviour.RegulatoryAspectUpdatorBehaviour;
 import org.alfresco.service.namespace.QName;
 import org.alfresco.service.cmr.repository.*;
 import org.alfresco.util.GlobalPropertiesHandler;
@@ -23,7 +25,12 @@ public class Orchestrator {
 //        new Orchestrator().executeCalls(nodeId);
     }
 
-    public void executeCalls(final NodeRef nodeRef, String nodeId){
+    public Orchestrator() {
+        RegulatoryAspectUpdatorBehaviour behaviour = new RegulatoryAspectUpdatorBehaviour();
+        this.nodeService = behaviour.getNodeService();
+    }
+
+    public ArrayList<String> executeCalls(final NodeRef nodeRef, String nodeId){
         ArrayList<String> stampNodeIdList = invoker.getStampAssociations(nodeId);
         String stampNodeId = "";
 
@@ -34,27 +41,10 @@ public class Orchestrator {
             }
         }
 
-        System.out.println("DocNodeId >> " + nodeId + " >> stampNodeId >> " + stampNodeId + " >> stamp subject >> " + String.join(",", this.stampSubjectList));
-
-        if(this.stampSubjectList.size() > 0){
-            this.applyWebPublishedAspect(nodeRef);
-        }
-
-
+        return this.stampSubjectList;
 
     }
 
-    public void applyWebPublishedAspect(final NodeRef nodeRef) {
 
-        Map<QName, Serializable> aspectProperties = new HashMap<QName, Serializable>();
-        String nameSpace = globalProperties.getBoeingNamespace();
-
-        QName QN_ASPECT_BOEING_ONEPPPM = QName.createQName(nameSpace, globalProperties.getBoeingAspectName());
-        QName QN_PROP_REGULATORY_ASPECT_LIST = QName.createQName(nameSpace, globalProperties.getRegulatoryAspectListPropertyName());
-
-        aspectProperties.put(QN_PROP_REGULATORY_ASPECT_LIST, String.join(",", this.stampSubjectList)); //Comma Separated Reference Values
-
-        nodeService.addAspect(nodeRef, QN_ASPECT_BOEING_ONEPPPM, aspectProperties);
-    }
 
 }
