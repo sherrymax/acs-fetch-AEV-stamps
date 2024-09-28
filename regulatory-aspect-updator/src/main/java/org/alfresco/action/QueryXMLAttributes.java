@@ -32,9 +32,6 @@ public class QueryXMLAttributes {
                 String stampSubject = ele.getAttribute("subject");
                 System.out.println("STAMP Subject >>> " + stampSubject);
                 stampSubjectList.add(stampSubject);
-//                System.out.println("Icon >>> "+ ele.getAttribute("icon"));
-//                System.out.println("Color >>> "+ ele.getAttribute("color"));
-
             }
         } catch (Exception e) {
             e.printStackTrace();
