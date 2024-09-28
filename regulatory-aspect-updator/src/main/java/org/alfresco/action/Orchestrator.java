@@ -9,6 +9,7 @@ import org.alfresco.util.GlobalPropertiesHandler;
 
 import java.io.Serializable;
 
+
 public class Orchestrator {
 
     private InvokeREST invoker = new InvokeREST();
@@ -30,13 +31,26 @@ public class Orchestrator {
         this.nodeService = behaviour.getNodeService();
     }
 
-    public ArrayList<String> executeCalls(final NodeRef nodeRef, String nodeId){
-        ArrayList<String> stampNodeIdList = invoker.getStampAssociations(nodeId);
+    public ArrayList<String> executeCalls(final NodeRef nodeRef, String nodeId, Boolean isAlreadyStampAssociation){
+        ArrayList<String> stampNodeIdList = new ArrayList<String>();
+
+        System.out.println("NODE ID Inside executeCalls() >>> "+nodeId);
+
+        if(isAlreadyStampAssociation == true){
+            System.out.println(" Node ID "+nodeId+" is already a Stamp ASSOCIATION");
+            stampNodeIdList.add(nodeId);
+        }else {
+            System.out.println(" Node ID "+nodeId+" is NOT A Stamp ASSOCIATION");
+            stampNodeIdList = invoker.getStampAssociations(nodeId);
+        }
         String stampNodeId = "";
 
+        System.out.println(" Stamp Nodes List Size = "+stampNodeIdList.size());
+        System.out.println(" Invoking FOR LOOP to Get Content of Stamp ASSOCIATION ");
         if(stampNodeIdList.size() > 0){
             for(var i=0; i<stampNodeIdList.toArray().length; i++) {
                 stampNodeId = (String) stampNodeIdList.toArray()[i];
+                System.out.println(" Iteration # "+i+" to Get Content of Stamp ASSOCIATION >>> StampNodeId = "+stampNodeId);
                 this.stampSubjectList = new InvokeREST().callGET(stampNodeId);
             }
         }
