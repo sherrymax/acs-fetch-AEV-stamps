@@ -10,10 +10,12 @@ import org.alfresco.repo.policy.PolicyComponent;
 import org.alfresco.repo.security.authentication.AuthenticationUtil;
 import org.alfresco.service.cmr.repository.*;
 import org.alfresco.service.namespace.QName;
+import org.alfresco.service.namespace.QNamePattern;
 import org.alfresco.util.GlobalPropertiesHandler;
 import org.springframework.beans.factory.annotation.Value;
+import org.alfresco.service.namespace.RegexQNamePattern;
 
-
+import javax.activation.MimetypesFileTypeMap;
 import java.io.Serializable;
 import java.util.*;
 import java.util.concurrent.TimeUnit;
@@ -25,10 +27,13 @@ public class RegulatoryAspectUpdatorBehaviour implements NodeServicePolicies.OnU
     private NodeService nodeService;
     private ContentService contentService;
 
+    private MimetypeService mimetypeService;
+
     public ArrayList<String> stampSubjectList;
 
     private GlobalPropertiesHandler globalProperties = new GlobalPropertiesHandler();
 
+    public String docNodeId = "";
 
 
     //  FETCHING VALUES FROM alfresco-global.properties - START
@@ -51,6 +56,8 @@ public class RegulatoryAspectUpdatorBehaviour implements NodeServicePolicies.OnU
 
     public void init() {
 
+        System.out.println("*** **** **** START of INIT() method >>> >>> >>> ");
+
         GlobalPropertiesHandler globalPropertiesHandler = new GlobalPropertiesHandler();
         globalPropertiesHandler.setAlfrescoHostName(this.ACS_HOSTNAME);
         globalPropertiesHandler.setAlfrescoUserName(this.ACS_USERNAME);
@@ -59,93 +66,152 @@ public class RegulatoryAspectUpdatorBehaviour implements NodeServicePolicies.OnU
         globalPropertiesHandler.setBoeingAspectName(this.ASPECT_BOEING_ONEPPPM);
         globalPropertiesHandler.setRegulatoryAspectListPropertyName(this.PROP_REGULATORY_ASPECT_LIST);
 
+        System.out.println("*** **** **** this.ACS_HOSTNAME >>> >>> >>> "+this.ACS_HOSTNAME);
+
         System.out.println("*** **** **** NODE SERVICE >> "+this.nodeService);
 
         //On Property Update
         policyComponent.bindClassBehaviour(NodeServicePolicies.OnUpdatePropertiesPolicy.QNAME, ContentModel.TYPE_CONTENT,
                 new JavaBehaviour(this, "onUpdateProperties", Behaviour.NotificationFrequency.TRANSACTION_COMMIT));
 
+        //On Creation of Child Association
+//        policyComponent.bindClassBehaviour(NodeServicePolicies.OnCreateAssociationPolicy.QNAME, ContentModel.TYPE_CONTENT,
+//                new JavaBehaviour(this, "onUpdateProperties", Behaviour.NotificationFrequency.TRANSACTION_COMMIT));
+
+        System.out.println("*** **** **** END of INIT() method >>> >>> >>> ");
+
+
     }
 
     @Override
     public void onUpdateProperties(final NodeRef nodeRef, Map<QName, Serializable> beforeValues, Map<QName, Serializable> afterValues) {
 
+        if (nodeService.exists(nodeRef)) {
+            try {
+                System.out.println("STEP 1");
+                String tsgNameSpace = "http://www.tsgrp.com/model/openannotate/1.0";
+                System.out.println("STEP 2");
+                QName QN_PROP_TSG_IS_ANNOTATED = QName.createQName(tsgNameSpace, "isAnnotated");
+                System.out.println("STEP 3");
+
+                Boolean isAnnotated = (Boolean) nodeService.getProperty(nodeRef, QN_PROP_TSG_IS_ANNOTATED);
+                System.out.println("STEP 4");
+
+                System.out.println("*** isAnnotated >>> " + nodeService.getProperty(nodeRef, QN_PROP_TSG_IS_ANNOTATED));
+                System.out.println("STEP 5");
+            } catch (Exception ex) {
+                System.out.println("*** **** EXCEPTION **** ****");
+                System.out.println(ex);
+                System.out.println("*** **** EXCEPTION **** ****");
+            }
+        }
+
+
         AuthenticationUtil.runAs(new AuthenticationUtil.RunAsWork<Object>() {
+            private String docNodeId;
+
             public Object doWork() throws Exception {
 
                 if (nodeService.exists(nodeRef)) {
                     try {
-
                         String nodeId = nodeRef.getId();
-                        System.out.println("NODE ID : "+nodeId);
+                        System.out.println("CURRENT NODE ID : "+nodeId);
+
+                        /*
                         String fileName = nodeService.getProperty(nodeRef, ContentModel.PROP_NAME).toString();
-                        System.out.println("FILE NAME : "+fileName.toString());
+                        String fileType = nodeService.getProperty(nodeRef, ContentModel.TYPE_CONTENT).toString();
+                        String mimeType = fileType.split("mimetype=")[1].split("size")[0];
+                        mimeType = mimeType.replace("|","");
 
-                        if (fileName.trim().indexOf(".docx") != -1) {
+                        System.out.println("FILE NAME : "+fileName);
+                        System.out.println("FILE TYPE : "+fileType);
+                        System.out.println("MIME TYPE : "+mimeType);
+                        */
 
-                            System.out.println(">>>> ***** >>>>> START OF onUpdateProperties() >>>> ***** >>>>> ");
-                            System.out.println("-------- PROPERTIES (BEFORE UPDATING) : START -------");
-                            System.out.println(beforeValues);
-                            System.out.println("-------- PROPERTIES (BEFORE UPDATING) : END -------");
-                            System.out.println("-------- PROPERTIES (AFTER UPDATING) : START -------");
-                            System.out.println(afterValues);
-                            System.out.println("-------- PROPERTIES (AFTER UPDATING) : END -------");
-                            System.out.println(">>>> ***** >>>>> END OF onUpdateProperties() >>>> ***** >>>>> ");
+//                        Boolean isWriting = fileName.trim().indexOf(".docx") != -1;
+//                        Boolean isContentTypeOpenAnnotate = mimeType.trim().indexOf("application/vnd.adobe.xfdf") != -1;
 
-                            //Sleep for 5 seconds
-                            TimeUnit.SECONDS.sleep(5);
-                            ArrayList<String> stampSubjectList = new Orchestrator().executeCalls(nodeRef, nodeId);
+                        Boolean isWriting = isWritingDoc(nodeRef);
+                        Boolean isContentTypeOpenAnnotate = isContentTypeOpenAnnotateDoc(nodeRef);
 
-                            System.out.println("DocNodeId >> " + nodeId + " >> stamp subject >> " + String.join(",", stampSubjectList));
+                        if (isWriting || isContentTypeOpenAnnotate) {
+
+//                            System.out.println(">>>> ***** >>>>> START OF onUpdateProperties() >>>> ***** >>>>> ");
+//                            System.out.println("-------- PROPERTIES (BEFORE UPDATING) : START -------");
+//                            System.out.println(beforeValues);
+//                            System.out.println("-------- PROPERTIES (BEFORE UPDATING) : END -------");
+//                            System.out.println("-------- PROPERTIES (AFTER UPDATING) : START -------");
+//                            System.out.println(afterValues);
+//                            System.out.println("-------- PROPERTIES (AFTER UPDATING) : END -------");
+//                            System.out.println(">>>> ***** >>>>> END OF onUpdateProperties() >>>> ***** >>>>> ");
+
+                            System.out.println("Invoking new Orchestrator().executeCalls() ");
+
+                            //if content type is Open Annotate, then node is Association.
+                            ArrayList<String> stampSubjectList = new Orchestrator().executeCalls(nodeRef, nodeId, isContentTypeOpenAnnotate);
+
                             System.out.println("stampSubjectList.size() = "+stampSubjectList.size());
 
                             if(stampSubjectList.size() > 0){
-                                new RegulatoryAspectUpdatorBehaviour().applyWebPublishedAspect(nodeService, nodeRef, stampSubjectList);
+                                System.out.println("DocNodeId >> " + nodeId + " >> stamp subject >> " + String.join(",", stampSubjectList));
+                                new RegulatoryAspectUpdatorBehaviour().applyWebPublishedAspect(nodeService, nodeId, stampSubjectList);
                             }
                         }
                     } catch (Exception e) {
                         throw new RuntimeException(e);
                     }
                 }
-
-
                 return null;
             }
-
         }, AuthenticationUtil.getSystemUserName());
+    }
 
+    public Boolean isWritingDoc(NodeRef nodeRef){
+        String fileName = nodeService.getProperty(nodeRef, ContentModel.PROP_NAME).toString().trim();
+        return( (fileName.indexOf(".docx") != -1) && ((fileName.indexOf("POL") != -1) || (fileName.indexOf("PRO") != -1) || (fileName.indexOf("BPI") != -1)));
+    }
+
+    public Boolean isContentTypeOpenAnnotateDoc(NodeRef nodeRef){
+        String fileType = nodeService.getProperty(nodeRef, ContentModel.TYPE_CONTENT).toString();
+        String mimeType = fileType.split("mimetype=")[1].split("size")[0];
+        mimeType = mimeType.replace("|","");
+
+        return (mimeType.trim().indexOf("application/vnd.adobe.xfdf") != -1);
 
     }
 
-    public void applyWebPublishedAspect(NodeService nodeService, final NodeRef nodeRef, ArrayList<String> stampSubjectList) {
+    public void applyWebPublishedAspect(NodeService nodeService, String nodeId, ArrayList<String> stampSubjectList) {
 
-        System.out.println(" Step 1 ");
-//        Map<QName, Serializable> aspectProperties = new HashMap<QName, Serializable>();
+
+        NodeRef nodeRef = new NodeRef(StoreRef.STORE_REF_WORKSPACE_SPACESSTORE, nodeId);
+        NodeRef sourceNodeRef = new NodeRef(StoreRef.STORE_REF_WORKSPACE_SPACESSTORE, nodeId);
+
+//        ChildAssociationRef childAssociationRef = nodeService.getPrimaryParent(nodeRef);
+//        NodeRef parentNodeRef = childAssociationRef.getParentRef();
+//
+//        System.out.println("parentNodeRef ID >>> "+parentNodeRef.getId());
+
+        List<AssociationRef>  sourceAssociationNodeRefList = nodeService.getSourceAssocs(nodeRef, RegexQNamePattern.MATCH_ALL);
+
+        for (AssociationRef item : sourceAssociationNodeRefList) {
+            sourceNodeRef = item.getSourceRef();
+            System.out.println(">>> >>> item.getId() >>> >>> "+item.getId());
+            System.out.println(">>> >>> item.getSourceRef().getId() >>> >>> "+item.getSourceRef().getId());
+        }
+
+
+//        NodeRef nodeRef = nodeService.getNodeRef(Long.parseLong(nodeId));
+
         Map<QName, Serializable> aspectProperties = new HashMap<QName, Serializable>();
-
-        System.out.println(" Step 2 ");
         String nameSpace = globalProperties.getBoeingNamespace();
 
-        System.out.println(" Step 3 ");
         QName QN_ASPECT_BOEING_ONEPPPM = QName.createQName(nameSpace, globalProperties.getBoeingAspectName());
-        System.out.println(" Step 4 ");
         QName QN_PROP_REGULATORY_ASPECT_LIST = QName.createQName(nameSpace, globalProperties.getRegulatoryAspectListPropertyName());
 
-        System.out.println(" Step 5 ");
-        System.out.println(" aspectProperties "+aspectProperties);
-        System.out.println(" QN_PROP_REGULATORY_ASPECT_LIST "+QN_PROP_REGULATORY_ASPECT_LIST);
-        System.out.println(" this.stampSubjectList "+stampSubjectList);
         aspectProperties.put(QN_PROP_REGULATORY_ASPECT_LIST, String.join(",", stampSubjectList)); //Comma Separated Reference Values
-        System.out.println(" aspectProperties "+aspectProperties);
-        System.out.println(" QN_ASPECT_BOEING_ONEPPPM "+QN_ASPECT_BOEING_ONEPPPM);
-        System.out.println(">>> nodeRef >>> "+nodeRef);
-        System.out.println(">>> NODE SERVICE >>> "+new RegulatoryAspectUpdatorBehaviour().getNodeService());
+        nodeService.addAspect(sourceNodeRef, QN_ASPECT_BOEING_ONEPPPM, aspectProperties);
 
-        nodeService.addAspect(nodeRef, QN_ASPECT_BOEING_ONEPPPM, aspectProperties);
-
-
-        System.out.println("ASPECT SAVED SUCCESSFULLY >>> "+String.join(",", stampSubjectList));
-
+        System.out.println("ASPECT SAVED SUCCESSFULLY TP NODE ID >>> "+sourceNodeRef.getId()+" >>> "+String.join(",", stampSubjectList));
     }
 
     public void setNodeService(NodeService nodeService) {
@@ -163,5 +229,6 @@ public class RegulatoryAspectUpdatorBehaviour implements NodeServicePolicies.OnU
     public void setPolicyComponent(PolicyComponent policyComponent) {
         this.policyComponent = policyComponent;
     }
+
 
 }
