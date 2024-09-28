@@ -18,42 +18,53 @@ import java.io.InputStream;
 import java.net.MalformedURLException;
 import java.util.ArrayList;
 import java.util.Base64;
+import java.util.concurrent.TimeUnit;
 
 
 public class InvokeREST {
 
-    private GlobalPropertiesHandler globalProperties = new GlobalPropertiesHandler();
-    private String ACS_HOSTNAME = globalProperties.getAlfrescoHostName();
+    private GlobalPropertiesHandler globalProperties;
+    private String ACS_HOSTNAME;
 
-
+    public InvokeREST(){
+        System.out.println(">>>>>> InvokeREST CONSTRUCTOR <<<<<<<<");
+        this.globalProperties = new GlobalPropertiesHandler();
+        this.ACS_HOSTNAME = globalProperties.getAlfrescoHostName();
+        System.out.println(">>>>>> this.ACS_HOSTNAME <<<<<<<< "+this.ACS_HOSTNAME);
+    }
 
 
     private String getACSAuthenticationHeader() {
-        String username = globalProperties.getAlfrescoUserName();
-        String password = globalProperties.getAlfrescoPassword();
+        String username = this.globalProperties.getAlfrescoUserName();
+        String password = this.globalProperties.getAlfrescoPassword();
         String credentials = username + ":" + password;
         String encodedCredentials = Base64.getEncoder().encodeToString(credentials.getBytes());
         return "Basic " + encodedCredentials;
     }
 
     public static void main(String[] args) {
-    	InvokeREST invokeREST = new InvokeREST();
+//    	InvokeREST invokeREST = new InvokeREST();
 //		invokeREST.getStampAssociations("90582a4d-5b54-4bdb-8ff7-00e08073a435");
-        invokeREST.callGET("4ded98ec-60d7-4bf1-89bf-5e871bef34e9");
+//        invokeREST.callGET("4ded98ec-60d7-4bf1-89bf-5e871bef34e9");
     }
 
 
 
     public ArrayList<String> callGET(String nodeId) {
 
+        System.out.println(">>>>>> Node ID Inside callGET <<<<<<<< "+nodeId);
+
         ArrayList<String> stampSubjectList = new ArrayList<>();
 
         try (CloseableHttpClient httpClient = HttpClientBuilder.create().build()) {
 
-
             String url = this.ACS_HOSTNAME + "/alfresco/api/-default-/public/alfresco/versions/1/nodes/"+nodeId+"/content?attachment=true";
             HttpGet getRequest = new HttpGet(url);
+            System.out.println("$$$$$ AUTH HEADER >>> "+this.getACSAuthenticationHeader());
             getRequest.setHeader("Authorization", this.getACSAuthenticationHeader());
+
+            System.out.println(">>>>>> callGET URL <<<<<<<< "+url);
+
 
             HttpResponse response = httpClient.execute(getRequest);
 
@@ -67,6 +78,8 @@ public class InvokeREST {
         } catch (MalformedURLException e) {
             e.printStackTrace();
         } catch (IOException e) {
+            e.printStackTrace();
+        } catch (Exception e) {
             e.printStackTrace();
         }
 
@@ -89,6 +102,7 @@ public class InvokeREST {
             HttpGet getRequest = new HttpGet(requestURL);
             getRequest.setHeader("Authorization", this.getACSAuthenticationHeader());
 
+//            TimeUnit.SECONDS.sleep(1);
             HttpResponse response = httpClient.execute(getRequest);
 
             if (response.getStatusLine().getStatusCode() != 200) {
@@ -100,7 +114,7 @@ public class InvokeREST {
             String apiResponse;
 
             while ((apiResponse = br.readLine()) != null) {
-                System.out.println("API Response from Server .... \n");
+                System.out.println("API Response from Server ....");
                 System.out.println(apiResponse);
 
                 // Extraction Step 1 : Convert API Response String to JsonElement
@@ -125,9 +139,6 @@ public class InvokeREST {
                 }
             }
 
-
-
-
             } catch (MalformedURLException e) {
             e.printStackTrace();
         } catch (Exception e) {
@@ -135,8 +146,4 @@ public class InvokeREST {
         }
         return stampNodeList;
     }
-
-
-
-
 }
