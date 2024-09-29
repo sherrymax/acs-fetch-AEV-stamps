@@ -6,11 +6,15 @@ import org.alfresco.behaviour.RegulatoryAspectUpdatorBehaviour;
 import org.alfresco.service.namespace.QName;
 import org.alfresco.service.cmr.repository.*;
 import org.alfresco.util.GlobalPropertiesHandler;
+import org.apache.commons.logging.Log;
+import org.apache.commons.logging.LogFactory;
 
 import java.io.Serializable;
 
 
 public class Orchestrator {
+
+    private static Log logger = LogFactory.getLog(Orchestrator.class);
 
     private InvokeREST invoker = new InvokeREST();
     private ArrayList<String> stampSubjectList = new ArrayList<>();
@@ -31,7 +35,7 @@ public class Orchestrator {
         this.nodeService = behaviour.getNodeService();
     }
 
-    public ArrayList<String> executeCalls(final NodeRef nodeRef, String nodeId, Boolean isAlreadyStampAssociation){
+    public ArrayList<String> executeCalls(ContentService contentService, final NodeRef nodeRef, String nodeId, Boolean isAlreadyStampAssociation){
         ArrayList<String> stampNodeIdList = new ArrayList<String>();
 
         System.out.println("NODE ID Inside executeCalls() >>> "+nodeId);
@@ -51,7 +55,7 @@ public class Orchestrator {
             for(var i=0; i<stampNodeIdList.toArray().length; i++) {
                 stampNodeId = (String) stampNodeIdList.toArray()[i];
                 System.out.println(" Iteration # "+i+" to Get Content of Stamp ASSOCIATION >>> StampNodeId = "+stampNodeId);
-                this.stampSubjectList = new InvokeREST().callGET(stampNodeId);
+                this.stampSubjectList = new InvokeREST().callGET(contentService, stampNodeId);
             }
         }
 
