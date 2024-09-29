@@ -1,234 +1,191 @@
-package org.alfresco.behaviour;
+package org.alfresco.action;
 
-import org.alfresco.action.Orchestrator;
+import com.google.gson.Gson;
+import com.google.gson.JsonArray;
+import com.google.gson.JsonElement;
+import com.google.gson.JsonObject;
 import org.alfresco.model.ContentModel;
-import org.alfresco.repo.node.NodeServicePolicies;
-
-import org.alfresco.repo.policy.Behaviour;
-import org.alfresco.repo.policy.JavaBehaviour;
-import org.alfresco.repo.policy.PolicyComponent;
-import org.alfresco.repo.security.authentication.AuthenticationUtil;
-import org.alfresco.service.cmr.repository.*;
-import org.alfresco.service.namespace.QName;
-import org.alfresco.service.namespace.QNamePattern;
+import org.alfresco.service.ServiceRegistry;
+import org.alfresco.service.cmr.repository.ContentReader;
+import org.alfresco.service.cmr.repository.ContentService;
+import org.alfresco.service.cmr.repository.NodeRef;
+import org.alfresco.service.cmr.repository.StoreRef;
 import org.alfresco.util.GlobalPropertiesHandler;
+import org.apache.http.HttpResponse;
+import org.apache.http.client.methods.HttpGet;
+import org.apache.http.impl.client.CloseableHttpClient;
+import org.apache.http.impl.client.HttpClientBuilder;
 import org.springframework.beans.factory.annotation.Value;
-import org.alfresco.service.namespace.RegexQNamePattern;
 
-import javax.activation.MimetypesFileTypeMap;
-import java.io.Serializable;
-import java.util.*;
+import java.io.BufferedReader;
+import java.io.IOException;
+import java.io.InputStreamReader;
+import java.io.InputStream;
+import java.net.MalformedURLException;
+import java.util.ArrayList;
+import java.util.Base64;
 import java.util.concurrent.TimeUnit;
 
-
-public class RegulatoryAspectUpdatorBehaviour implements NodeServicePolicies.OnUpdatePropertiesPolicy {
-
-    private PolicyComponent policyComponent;
-    private NodeService nodeService;
-    private ContentService contentService;
-
-    private MimetypeService mimetypeService;
-
-    public ArrayList<String> stampSubjectList;
-
-    private GlobalPropertiesHandler globalProperties = new GlobalPropertiesHandler();
-
-    public String docNodeId = "";
+import org.apache.commons.logging.Log;
+import org.apache.commons.logging.LogFactory;
 
 
-    //  FETCHING VALUES FROM alfresco-global.properties - START
-    @Value("${boeing.alfresco.hostname}")
+public class InvokeREST {
+
+    private static Log logger = LogFactory.getLog(InvokeREST.class);
+
+    private GlobalPropertiesHandler globalProperties;
     private String ACS_HOSTNAME;
-
-    @Value("${boeing.alfresco.username}")
-    private String ACS_USERNAME;
-
-    @Value("${boeing.alfresco.password}")
-    private String ACS_PASSWORD;
-    @Value("${boeing.namespace}")
-    private String NAMESPACE_BOEING;
-    @Value("${boeing.aspect.name}")
-    private String ASPECT_BOEING_ONEPPPM;
-    @Value("${boeing.regulatory-aspect-list.property}")
-    private String PROP_REGULATORY_ASPECT_LIST;
-
-    //  FETCHING VALUES FROM alfresco-global.properties - END
-
-    public void init() {
-
-        System.out.println("*** **** **** START of INIT() method >>> >>> >>> ");
-
-        GlobalPropertiesHandler globalPropertiesHandler = new GlobalPropertiesHandler();
-        globalPropertiesHandler.setAlfrescoHostName(this.ACS_HOSTNAME);
-        globalPropertiesHandler.setAlfrescoUserName(this.ACS_USERNAME);
-        globalPropertiesHandler.setAlfrescoPassword(this.ACS_PASSWORD);
-        globalPropertiesHandler.setBoeingNamespace(this.NAMESPACE_BOEING);
-        globalPropertiesHandler.setBoeingAspectName(this.ASPECT_BOEING_ONEPPPM);
-        globalPropertiesHandler.setRegulatoryAspectListPropertyName(this.PROP_REGULATORY_ASPECT_LIST);
-
-        System.out.println("*** **** **** this.ACS_HOSTNAME >>> >>> >>> "+this.ACS_HOSTNAME);
-
-        System.out.println("*** **** **** NODE SERVICE >> "+this.nodeService);
-
-        //On Property Update
-        policyComponent.bindClassBehaviour(NodeServicePolicies.OnUpdatePropertiesPolicy.QNAME, ContentModel.TYPE_CONTENT,
-                new JavaBehaviour(this, "onUpdateProperties", Behaviour.NotificationFrequency.TRANSACTION_COMMIT));
-
-        //On Creation of Child Association
-//        policyComponent.bindClassBehaviour(NodeServicePolicies.OnCreateAssociationPolicy.QNAME, ContentModel.TYPE_CONTENT,
-//                new JavaBehaviour(this, "onUpdateProperties", Behaviour.NotificationFrequency.TRANSACTION_COMMIT));
-
-        System.out.println("*** **** **** END of INIT() method >>> >>> >>> ");
+    private ServiceRegistry serviceRegistry;
 
 
+    public InvokeREST(){
+        logger.debug(">>>>>> InvokeREST CONSTRUCTOR <<<<<<<<");
+        this.globalProperties = new GlobalPropertiesHandler();
+        this.ACS_HOSTNAME = globalProperties.getAlfrescoHostName();
+        logger.debug(">>>>>> this.ACS_HOSTNAME <<<<<<<< "+this.ACS_HOSTNAME);
     }
 
-    @Override
-    public void onUpdateProperties(final NodeRef nodeRef, Map<QName, Serializable> beforeValues, Map<QName, Serializable> afterValues) {
 
-        if (nodeService.exists(nodeRef)) {
-            try {
-                System.out.println("STEP 1");
-                String tsgNameSpace = "http://www.tsgrp.com/model/openannotate/1.0";
-                System.out.println("STEP 2");
-                QName QN_PROP_TSG_IS_ANNOTATED = QName.createQName(tsgNameSpace, "isAnnotated");
-                System.out.println("STEP 3");
-
-                Boolean isAnnotated = (Boolean) nodeService.getProperty(nodeRef, QN_PROP_TSG_IS_ANNOTATED);
-                System.out.println("STEP 4");
-
-                System.out.println("*** isAnnotated >>> " + nodeService.getProperty(nodeRef, QN_PROP_TSG_IS_ANNOTATED));
-                System.out.println("STEP 5");
-            } catch (Exception ex) {
-                System.out.println("*** **** EXCEPTION **** ****");
-                System.out.println(ex);
-                System.out.println("*** **** EXCEPTION **** ****");
-            }
-        }
-
-
-        AuthenticationUtil.runAs(new AuthenticationUtil.RunAsWork<Object>() {
-            private String docNodeId;
-
-            public Object doWork() throws Exception {
-
-                if (nodeService.exists(nodeRef)) {
-                    try {
-                        String nodeId = nodeRef.getId();
-                        System.out.println("CURRENT NODE ID : "+nodeId);
-
-                        /*
-                        String fileName = nodeService.getProperty(nodeRef, ContentModel.PROP_NAME).toString();
-                        String fileType = nodeService.getProperty(nodeRef, ContentModel.TYPE_CONTENT).toString();
-                        String mimeType = fileType.split("mimetype=")[1].split("size")[0];
-                        mimeType = mimeType.replace("|","");
-
-                        System.out.println("FILE NAME : "+fileName);
-                        System.out.println("FILE TYPE : "+fileType);
-                        System.out.println("MIME TYPE : "+mimeType);
-                        */
-
-//                        Boolean isWriting = fileName.trim().indexOf(".docx") != -1;
-//                        Boolean isContentTypeOpenAnnotate = mimeType.trim().indexOf("application/vnd.adobe.xfdf") != -1;
-
-                        Boolean isWriting = isWritingDoc(nodeRef);
-                        Boolean isContentTypeOpenAnnotate = isContentTypeOpenAnnotateDoc(nodeRef);
-
-                        if (isWriting || isContentTypeOpenAnnotate) {
-
-//                            System.out.println(">>>> ***** >>>>> START OF onUpdateProperties() >>>> ***** >>>>> ");
-//                            System.out.println("-------- PROPERTIES (BEFORE UPDATING) : START -------");
-//                            System.out.println(beforeValues);
-//                            System.out.println("-------- PROPERTIES (BEFORE UPDATING) : END -------");
-//                            System.out.println("-------- PROPERTIES (AFTER UPDATING) : START -------");
-//                            System.out.println(afterValues);
-//                            System.out.println("-------- PROPERTIES (AFTER UPDATING) : END -------");
-//                            System.out.println(">>>> ***** >>>>> END OF onUpdateProperties() >>>> ***** >>>>> ");
-
-                            System.out.println("Invoking new Orchestrator().executeCalls() ");
-
-                            //if content type is Open Annotate, then node is Association.
-                            ArrayList<String> stampSubjectList = new Orchestrator().executeCalls(nodeRef, nodeId, isContentTypeOpenAnnotate);
-
-                            System.out.println("stampSubjectList.size() = "+stampSubjectList.size());
-
-                            if(stampSubjectList.size() > 0){
-                                System.out.println("DocNodeId >> " + nodeId + " >> stamp subject >> " + String.join(",", stampSubjectList));
-                                new RegulatoryAspectUpdatorBehaviour().applyWebPublishedAspect(nodeService, nodeId, stampSubjectList);
-                            }
-                        }
-                    } catch (Exception e) {
-                        throw new RuntimeException(e);
-                    }
-                }
-                return null;
-            }
-        }, AuthenticationUtil.getSystemUserName());
+    private String getACSAuthenticationHeader() {
+        String username = this.globalProperties.getAlfrescoUserName();
+        String password = this.globalProperties.getAlfrescoPassword();
+        String credentials = username + ":" + password;
+        String encodedCredentials = Base64.getEncoder().encodeToString(credentials.getBytes());
+        return "Basic " + encodedCredentials;
     }
 
-    public Boolean isWritingDoc(NodeRef nodeRef){
-        String fileName = nodeService.getProperty(nodeRef, ContentModel.PROP_NAME).toString().trim();
-        return( (fileName.indexOf(".docx") != -1) && ((fileName.indexOf("POL") != -1) || (fileName.indexOf("PRO") != -1) || (fileName.indexOf("BPI") != -1)));
+    public static void main(String[] args) {
+//    	InvokeREST invokeREST = new InvokeREST();
+//		invokeREST.getStampAssociations("90582a4d-5b54-4bdb-8ff7-00e08073a435");
+//        invokeREST.callGET("4ded98ec-60d7-4bf1-89bf-5e871bef34e9");
     }
 
-    public Boolean isContentTypeOpenAnnotateDoc(NodeRef nodeRef){
-        String fileType = nodeService.getProperty(nodeRef, ContentModel.TYPE_CONTENT).toString();
-        String mimeType = fileType.split("mimetype=")[1].split("size")[0];
-        mimeType = mimeType.replace("|","");
-
-        return (mimeType.trim().indexOf("application/vnd.adobe.xfdf") != -1);
-
+    public void setServiceRegistry(ServiceRegistry serviceRegistry) {
+        this.serviceRegistry = serviceRegistry;
     }
 
-    public void applyWebPublishedAspect(NodeService nodeService, String nodeId, ArrayList<String> stampSubjectList) {
+    public ArrayList<String> callGET(ContentService contentService, String nodeId) {
 
+        logger.debug(">>>>>> Node ID Inside callGET <<<<<<<< "+nodeId);
 
+        ArrayList<String> stampSubjectList = new ArrayList<>();
         NodeRef nodeRef = new NodeRef(StoreRef.STORE_REF_WORKSPACE_SPACESSTORE, nodeId);
-        NodeRef sourceNodeRef = new NodeRef(StoreRef.STORE_REF_WORKSPACE_SPACESSTORE, nodeId);
 
-//        ChildAssociationRef childAssociationRef = nodeService.getPrimaryParent(nodeRef);
-//        NodeRef parentNodeRef = childAssociationRef.getParentRef();
-//
-//        System.out.println("parentNodeRef ID >>> "+parentNodeRef.getId());
+        try{
+            ContentReader reader = contentService.getReader(nodeRef, ContentModel.PROP_CONTENT);
+            if (reader.exists()) {
+                System.out.println(">>>>>> INSIDE callGET.reader.exists() <<<<<<<< "+nodeId);
+                InputStream inputStream = reader.getContentInputStream();
+                stampSubjectList = new QueryXMLAttributes().getSubjectFromStamp(inputStream);
+                System.out.println(">>>>>> stampSubjectList <<<<<<<< "+String.join(",", stampSubjectList));
 
-        List<AssociationRef>  sourceAssociationNodeRefList = nodeService.getSourceAssocs(nodeRef, RegexQNamePattern.MATCH_ALL);
-
-        for (AssociationRef item : sourceAssociationNodeRefList) {
-            sourceNodeRef = item.getSourceRef();
-            System.out.println(">>> >>> item.getId() >>> >>> "+item.getId());
-            System.out.println(">>> >>> item.getSourceRef().getId() >>> >>> "+item.getSourceRef().getId());
+            }
+        } catch (Exception e) {
+            e.printStackTrace();
         }
 
-
-//        NodeRef nodeRef = nodeService.getNodeRef(Long.parseLong(nodeId));
-
-        Map<QName, Serializable> aspectProperties = new HashMap<QName, Serializable>();
-        String nameSpace = globalProperties.getBoeingNamespace();
-
-        QName QN_ASPECT_BOEING_ONEPPPM = QName.createQName(nameSpace, globalProperties.getBoeingAspectName());
-        QName QN_PROP_REGULATORY_ASPECT_LIST = QName.createQName(nameSpace, globalProperties.getRegulatoryAspectListPropertyName());
-
-        aspectProperties.put(QN_PROP_REGULATORY_ASPECT_LIST, String.join(",", stampSubjectList)); //Comma Separated Reference Values
-        nodeService.addAspect(sourceNodeRef, QN_ASPECT_BOEING_ONEPPPM, aspectProperties);
-
-        System.out.println("ASPECT SAVED SUCCESSFULLY TP NODE ID >>> "+sourceNodeRef.getId()+" >>> "+String.join(",", stampSubjectList));
+        return stampSubjectList;
     }
 
-    public void setNodeService(NodeService nodeService) {
-        this.nodeService = nodeService;
+    public ArrayList<String> callGET_old(String nodeId) {
+
+        logger.debug(">>>>>> Node ID Inside callGET <<<<<<<< "+nodeId);
+
+
+        ArrayList<String> stampSubjectList = new ArrayList<>();
+
+        try (CloseableHttpClient httpClient = HttpClientBuilder.create().build()) {
+
+            String url = this.ACS_HOSTNAME + "/alfresco/api/-default-/public/alfresco/versions/1/nodes/"+nodeId+"/content?attachment=true";
+            HttpGet getRequest = new HttpGet(url);
+            logger.debug("$$$$$ AUTH HEADER >>> "+this.getACSAuthenticationHeader());
+            getRequest.setHeader("Authorization", this.getACSAuthenticationHeader());
+            getRequest.setHeader("Cache-Control", "no-cache");
+
+            logger.debug(">>>>>> callGET URL <<<<<<<< "+url);
+
+
+            HttpResponse response = httpClient.execute(getRequest);
+
+            if (response.getStatusLine().getStatusCode() != 200) {
+                throw new RuntimeException("Failed : HTTP error code : " + response.getStatusLine().getStatusCode());
+            }
+
+            InputStream inputStream = response.getEntity().getContent();
+
+            stampSubjectList = new QueryXMLAttributes().getSubjectFromStamp(inputStream);
+
+        } catch (MalformedURLException e) {
+            e.printStackTrace();
+        } catch (IOException e) {
+            e.printStackTrace();
+        } catch (Exception e) {
+            e.printStackTrace();
+        }
+
+        return stampSubjectList;
     }
 
-    public NodeService getNodeService() {
-        return this.nodeService;
+
+    public ArrayList<String> getStampAssociations(String nodeId) {
+
+        String requestURL = this.ACS_HOSTNAME + "/alfresco/api/-default-/public/alfresco/versions/1/nodes/" + nodeId
+                + "/targets?include=properties&where=(assocType='oa:annotates')";
+        logger.debug(requestURL);
+
+        Gson gson = new Gson();
+
+        ArrayList<String> stampNodeList = new ArrayList<>();
+
+        try (CloseableHttpClient httpClient = HttpClientBuilder.create().build()) {
+
+            HttpGet getRequest = new HttpGet(requestURL);
+            getRequest.setHeader("Authorization", this.getACSAuthenticationHeader());
+            getRequest.setHeader("Cache-Control", "no-cache");
+
+//            TimeUnit.SECONDS.sleep(1);
+            HttpResponse response = httpClient.execute(getRequest);
+
+            if (response.getStatusLine().getStatusCode() != 200) {
+                throw new RuntimeException("Failed : HTTP error code : " + response.getStatusLine().getStatusCode());
+            }
+
+            BufferedReader br = new BufferedReader(new InputStreamReader((response.getEntity().getContent())));
+
+            String apiResponse;
+
+            while ((apiResponse = br.readLine()) != null) {
+                logger.debug("API Response from Server ....");
+                logger.debug(apiResponse);
+
+                // Extraction Step 1 : Convert API Response String to JsonElement
+                JsonElement je = gson.fromJson(apiResponse, JsonElement.class);
+
+                // Extraction Step 2 : Convert JsonElement to JsonObject
+                JsonObject jo = je.getAsJsonObject();
+
+                // Extraction Step 3 : Get the property from JsonObject
+                JsonObject list = jo.getAsJsonObject("list");
+
+                // Get the list of entries from JsonObject
+                JsonArray entriesArr = list.getAsJsonArray("entries");
+                logger.debug(entriesArr.size());
+
+                for(var i=0; i<entriesArr.size(); i++){
+                    JsonObject jo_entry = gson.fromJson(entriesArr.get(i), JsonObject.class);
+                    JsonElement je_entry = jo_entry.asMap().get("entry");
+                    JsonObject jo_entry_obj = je_entry.getAsJsonObject();
+
+                    stampNodeList.add(jo_entry_obj.get("id").getAsString());
+                }
+            }
+
+            } catch (MalformedURLException e) {
+            e.printStackTrace();
+        } catch (Exception e) {
+            e.printStackTrace();
+        }
+        return stampNodeList;
     }
-
-    public void setContentService(ContentService contentService) {
-        this.contentService = contentService;
-    }
-
-    public void setPolicyComponent(PolicyComponent policyComponent) {
-        this.policyComponent = policyComponent;
-    }
-
-
 }
