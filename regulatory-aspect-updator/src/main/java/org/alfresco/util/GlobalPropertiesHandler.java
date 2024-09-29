@@ -1,6 +1,11 @@
 package org.alfresco.util;
 
+import org.alfresco.behaviour.RegulatoryAspectUpdatorBehaviour;
+import org.apache.commons.logging.Log;
+import org.apache.commons.logging.LogFactory;
+
 public class GlobalPropertiesHandler {
+    private static Log logger = LogFactory.getLog(GlobalPropertiesHandler.class);
     private static String alfrescoHostName;
     private static String alfrescoUserName;
     private static String alfrescoPassword;
