@@ -4,6 +4,12 @@ import com.google.gson.Gson;
 import com.google.gson.JsonArray;
 import com.google.gson.JsonElement;
 import com.google.gson.JsonObject;
+import org.alfresco.model.ContentModel;
+import org.alfresco.service.ServiceRegistry;
+import org.alfresco.service.cmr.repository.ContentReader;
+import org.alfresco.service.cmr.repository.ContentService;
+import org.alfresco.service.cmr.repository.NodeRef;
+import org.alfresco.service.cmr.repository.StoreRef;
 import org.alfresco.util.GlobalPropertiesHandler;
 import org.apache.http.HttpResponse;
 import org.apache.http.client.methods.HttpGet;
@@ -20,17 +26,24 @@ import java.util.ArrayList;
 import java.util.Base64;
 import java.util.concurrent.TimeUnit;
 
+import org.apache.commons.logging.Log;
+import org.apache.commons.logging.LogFactory;
+
 
 public class InvokeREST {
 
+    private static Log logger = LogFactory.getLog(InvokeREST.class);
+
     private GlobalPropertiesHandler globalProperties;
     private String ACS_HOSTNAME;
+    private ServiceRegistry serviceRegistry;
+
 
     public InvokeREST(){
-        System.out.println(">>>>>> InvokeREST CONSTRUCTOR <<<<<<<<");
+        logger.debug(">>>>>> InvokeREST CONSTRUCTOR <<<<<<<<");
         this.globalProperties = new GlobalPropertiesHandler();
         this.ACS_HOSTNAME = globalProperties.getAlfrescoHostName();
-        System.out.println(">>>>>> this.ACS_HOSTNAME <<<<<<<< "+this.ACS_HOSTNAME);
+        logger.debug(">>>>>> this.ACS_HOSTNAME <<<<<<<< "+this.ACS_HOSTNAME);
     }
 
 
@@ -48,11 +61,37 @@ public class InvokeREST {
 //        invokeREST.callGET("4ded98ec-60d7-4bf1-89bf-5e871bef34e9");
     }
 
+    public void setServiceRegistry(ServiceRegistry serviceRegistry) {
+        this.serviceRegistry = serviceRegistry;
+    }
 
+    public ArrayList<String> callGET(ContentService contentService, String nodeId) {
 
-    public ArrayList<String> callGET(String nodeId) {
+        logger.debug(">>>>>> Node ID Inside callGET <<<<<<<< "+nodeId);
 
-        System.out.println(">>>>>> Node ID Inside callGET <<<<<<<< "+nodeId);
+        ArrayList<String> stampSubjectList = new ArrayList<>();
+        NodeRef nodeRef = new NodeRef(StoreRef.STORE_REF_WORKSPACE_SPACESSTORE, nodeId);
+
+        try{
+            ContentReader reader = contentService.getReader(nodeRef, ContentModel.PROP_CONTENT);
+            if (reader.exists()) {
+                System.out.println(">>>>>> INSIDE callGET.reader.exists() <<<<<<<< "+nodeId);
+                InputStream inputStream = reader.getContentInputStream();
+                stampSubjectList = new QueryXMLAttributes().getSubjectFromStamp(inputStream);
+                System.out.println(">>>>>> stampSubjectList <<<<<<<< "+String.join(",", stampSubjectList));
+
+            }
+        } catch (Exception e) {
+            e.printStackTrace();
+        }
+
+        return stampSubjectList;
+    }
+
+    public ArrayList<String> callGET_old(String nodeId) {
+
+        logger.debug(">>>>>> Node ID Inside callGET <<<<<<<< "+nodeId);
+
 
         ArrayList<String> stampSubjectList = new ArrayList<>();
 
@@ -60,10 +99,11 @@ public class InvokeREST {
 
             String url = this.ACS_HOSTNAME + "/alfresco/api/-default-/public/alfresco/versions/1/nodes/"+nodeId+"/content?attachment=true";
             HttpGet getRequest = new HttpGet(url);
-            System.out.println("$$$$$ AUTH HEADER >>> "+this.getACSAuthenticationHeader());
+            logger.debug("$$$$$ AUTH HEADER >>> "+this.getACSAuthenticationHeader());
             getRequest.setHeader("Authorization", this.getACSAuthenticationHeader());
+            getRequest.setHeader("Cache-Control", "no-cache");
 
-            System.out.println(">>>>>> callGET URL <<<<<<<< "+url);
+            logger.debug(">>>>>> callGET URL <<<<<<<< "+url);
 
 
             HttpResponse response = httpClient.execute(getRequest);
@@ -73,6 +113,7 @@ public class InvokeREST {
             }
 
             InputStream inputStream = response.getEntity().getContent();
+
             stampSubjectList = new QueryXMLAttributes().getSubjectFromStamp(inputStream);
 
         } catch (MalformedURLException e) {
@@ -91,7 +132,7 @@ public class InvokeREST {
 
         String requestURL = this.ACS_HOSTNAME + "/alfresco/api/-default-/public/alfresco/versions/1/nodes/" + nodeId
                 + "/targets?include=properties&where=(assocType='oa:annotates')";
-        System.out.println(requestURL);
+        logger.debug(requestURL);
 
         Gson gson = new Gson();
 
@@ -101,6 +142,7 @@ public class InvokeREST {
 
             HttpGet getRequest = new HttpGet(requestURL);
             getRequest.setHeader("Authorization", this.getACSAuthenticationHeader());
+            getRequest.setHeader("Cache-Control", "no-cache");
 
 //            TimeUnit.SECONDS.sleep(1);
             HttpResponse response = httpClient.execute(getRequest);
@@ -114,8 +156,8 @@ public class InvokeREST {
             String apiResponse;
 
             while ((apiResponse = br.readLine()) != null) {
-                System.out.println("API Response from Server ....");
-                System.out.println(apiResponse);
+                logger.debug("API Response from Server ....");
+                logger.debug(apiResponse);
 
                 // Extraction Step 1 : Convert API Response String to JsonElement
                 JsonElement je = gson.fromJson(apiResponse, JsonElement.class);
@@ -128,7 +170,7 @@ public class InvokeREST {
 
                 // Get the list of entries from JsonObject
                 JsonArray entriesArr = list.getAsJsonArray("entries");
-                System.out.println(entriesArr.size());
+                logger.debug(entriesArr.size());
 
                 for(var i=0; i<entriesArr.size(); i++){
                     JsonObject jo_entry = gson.fromJson(entriesArr.get(i), JsonObject.class);
